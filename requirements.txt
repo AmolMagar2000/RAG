@@ -1,0 +1,16 @@
+
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+python-multipart
+jinja2
+httpx
+langgraph
+qdrant-client
+google-genai
+groq
+rapidfuzz
+pypdf
+beautifulsoup4
+

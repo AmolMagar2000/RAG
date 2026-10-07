@@ -1,0 +1,5 @@
+# Only needed for the RAGAS endpoint / CLI (retrieval metrics work without these)
+ragas>=0.2.10
+langchain-core
+langchain-groq
+# langchain-google-genai   # only if RAGAS_JUDGE=gemini

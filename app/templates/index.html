@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UKVI Compliance Co-Pilot</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1c2430;--mute:#667085;--line:#e3e6eb;--accent:#1f5fbf;--ok:#1a7f4b;--warn:#b7791f;--bad:#c0392b}
+@media (prefers-color-scheme:dark){:root{--bg:#12151a;--card:#1b2028;--ink:#e8ebf0;--mute:#98a2b3;--line:#2b323d;--accent:#6ea2ef;--ok:#4cc38a;--warn:#e0a84a;--bad:#ef6f61}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card);display:flex;gap:12px;align-items:baseline}
+header h1{font-size:17px;margin:0}header small{color:var(--mute)}
+.layout{display:grid;grid-template-columns:270px 1fr;gap:16px;padding:16px;max-width:1200px;margin:auto}
+@media(max-width:820px){.layout{grid-template-columns:1fr}}
+aside,.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+label{display:block;font-size:12px;color:var(--mute);margin:10px 0 4px}
+select,input,textarea,button{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;width:100%}
+textarea{min-height:84px;resize:vertical}
+button{background:var(--accent);color:#fff;border:0;cursor:pointer;width:auto;padding:8px 16px}button.ghost{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
+button:disabled{opacity:.5;cursor:wait}
+nav{display:flex;gap:6px;margin-bottom:12px}nav button{background:var(--bg);color:var(--ink);border:1px solid var(--line)}nav button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.ex{display:block;text-align:left;background:none;border:0;color:var(--accent);padding:4px 0;width:100%;cursor:pointer;font-size:13px}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;color:#fff}
+.low{background:var(--ok)}.medium{background:var(--warn)}.high{background:var(--bad)}.info{background:var(--mute)}.warning{background:var(--warn)}.critical{background:var(--bad)}
+.act{border-top:1px solid var(--line);padding:10px 0}.act h4{margin:0 0 4px}
+.cite{font-size:12px;color:var(--mute)}.src{font-size:13px;border-left:3px solid var(--line);padding:2px 10px;margin:8px 0;white-space:pre-wrap}.src.cited{border-color:var(--accent)}
+.warnbox{background:rgba(224,168,74,.15);border:1px solid var(--warn);border-radius:8px;padding:8px 10px;margin:8px 0;font-size:13px}
+.esc{border:1px solid var(--bad);background:rgba(192,57,43,.08);border-radius:8px;padding:10px}
+pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;overflow:auto;font-size:12px;max-height:340px}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid var(--line);padding:6px;text-align:left}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.hide{display:none}.mute{color:var(--mute)}
+</style>
+</head>
+<body>
+<header><h1>UKVI Compliance Co-Pilot</h1><small id="health">checking…</small></header>
+<div class="layout">
+<aside>
+  <label for="employer">Employer (demo tenant)</label><select id="employer"></select>
+  <label for="asof">Guidance as-of date (optional)</label><input id="asof" type="date">
+  <label>Examples</label><div id="examples"></div>
+  <label>Employees in this tenant</label><div id="roster" class="mute" style="font-size:13px"></div>
+</aside>
+<main>
+  <nav><button data-tab="ask" class="on">Ask</button><button data-tab="docs">Documents</button><button data-tab="eval">Evaluation</button></nav>
+
+  <section id="tab-ask">
+    <div class="card"><textarea id="q" placeholder="e.g. Priya Sharma is moving to our Bradford site next month. What do we need to report, and is her right to work follow-up on track?"></textarea>
+    <div class="row" style="margin-top:8px"><button id="go">Ask</button><span id="status" class="mute"></span></div></div>
+    <div id="confirm" class="card hide" style="margin-top:12px"></div>
+    <div id="out" style="margin-top:12px"></div>
+    <details id="tracebox" class="hide" style="margin-top:12px"><summary>Run trace</summary><pre id="trace"></pre></details>
+  </section>
+
+  <section id="tab-docs" class="hide">
+    <div class="card"><table id="doctable"></table></div>
+    <form id="ingestform" class="card" style="margin-top:12px">
+      <strong>Ingest guidance documents</strong>
+      <label>Files (.pdf .html .md .txt) - select several at once</label>
+      <input type="file" id="files" multiple accept=".pdf,.html,.htm,.md,.txt">
+      <label>Default "valid from" date for all rows (2000-01-01 = no version history, always valid)</label>
+      <input type="date" id="defdate" value="2000-01-01">
+      <div style="overflow:auto"><table id="ingestrows" style="margin-top:8px"></table></div>
+      <p class="cite">Each file is its own document. To add a NEW VERSION of an existing document, give it the same document name, a new version label and its valid-from date; the older version is closed automatically.</p>
+      <div class="row" style="margin-top:6px"><button id="ingestbtn" type="submit" disabled>Ingest all</button><span id="ingeststatus" class="mute"></span></div>
+    </form>
+  </section>
+
+  <section id="tab-eval" class="hide">
+    <div class="card"><div class="row"><button id="runeval">Run retrieval eval</button><button id="runragas" class="ghost">+ RAGAS (needs judge keys)</button><span id="evalstatus" class="mute"></span></div>
+    <pre id="evalout" class="hide"></pre></div>
+  </section>
+</main>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+function h(tag, attrs = {}, ...kids) {           // DOM builder: textContent only, never innerHTML (LLM output is untrusted)
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) k === 'class' ? e.className = v : e.setAttribute(k, v);
+  for (const c of kids.flat()) if (c != null) e.append(c.nodeType ? c : document.createTextNode(c));
+  return e;
+}
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error((await r.text()).slice(0, 300));
+  return r.headers.get('content-type')?.includes('json') ? r.json() : r.text();
+}
+const post = (p, body) => api(p, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+
+const EXAMPLES = [
+  'Priya Sharma is moving to our Bradford site next month. What must we report, and is her right to work follow-up on track?',
+  'Which of our employees need urgent attention on visas or right to work checks?',
+  'How many working days do we have to report a change of work location?',
+  'Mohamed Kahn right to work follow-up status?',
+];
+
+async function init() {
+  const emp = await api('/employers');
+  $('#employer').replaceChildren(...emp.map(e => h('option', {value: e.id}, e.name)));
+  $('#employer').onchange = loadRoster; await loadRoster();
+  $('#examples').replaceChildren(...EXAMPLES.map(t => { const b = h('button', {class: 'ex'}, t); b.onclick = () => { $('#q').value = t; }; return b; }));
+  try { const hl = await api('/health'); $('#health').textContent = `qdrant ${hl.qdrant ? 'ok' : 'DOWN'} · ${hl.indexed_versions} indexed version(s) · jina ${hl.jina_key ? 'key set' : 'NO KEY'} · gemini ${hl.gemini_key ? 'key set' : 'no key'} · groq ${hl.groq_key ? 'key set' : 'no key'}`; } catch (e) { $('#health').textContent = 'health check failed'; }
+}
+async function loadRoster() { const r = await api('/employees?employer_id=' + $('#employer').value); $('#roster').textContent = r.map(x => x.name).join(', '); }
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  ['ask', 'docs', 'eval'].forEach(t => $('#tab-' + t).classList.toggle('hide', t !== b.dataset.tab));
+  if (b.dataset.tab === 'docs') loadDocs();
+});
+
+function pill(text, cls) { return h('span', {class: 'pill ' + cls}, text); }
+
+function render(res) {
+  $('#confirm').classList.add('hide');
+  const out = $('#out'); out.replaceChildren();
+  if (res.trace_id) { $('#tracebox').classList.remove('hide'); api('/trace/' + res.trace_id).then(t => $('#trace').textContent = t).catch(() => {}); }
+  if (res.status === 'needs_confirmation') return renderConfirm(res);
+  if (res.status !== 'ok') { out.append(h('div', {class: 'esc'}, h('strong', {}, 'Escalated for human review'), h('div', {}, res.reason))); return; }
+  const card = h('div', {class: 'card'},
+    h('div', {class: 'row'}, pill(res.risk_level.toUpperCase() + ' RISK', res.risk_level), h('span', {class: 'mute'}, `guidance as of ${res.as_of} · ${res.issue_type}`)),
+    h('p', {}, res.summary),
+    ...res.warnings.map(w => h('div', {class: 'warnbox'}, '⚠ ' + w)),
+    h('h3', {}, 'Actions'),
+    ...res.actions.map(a => h('div', {class: 'act'},
+      h('h4', {}, a.title, ' ', pill(a.priority, a.priority === 'high' ? 'high' : a.priority === 'medium' ? 'medium' : 'low')),
+      h('div', {}, a.detail),
+      h('div', {class: 'cite'}, `Owner: ${a.owner}` + (a.deadline ? ` · Deadline: ${a.deadline}` : '')),
+      h('div', {class: 'cite'}, a.citations.length ? 'Sources: ' + a.citations.join('; ') : ''))),
+  );
+  if (res.findings.length) card.append(h('h3', {}, 'Findings'), ...res.findings.map(f => h('div', {class: 'act'}, pill(f.severity, f.severity), ' ', f.statement, h('div', {class: 'cite'}, f.citations.join('; ')))));
+  if (res.open_questions.length) card.append(h('h3', {}, 'Open questions'), h('ul', {}, res.open_questions.map(q => h('li', {}, q))));
+  if (res.gaps.length) card.append(h('h3', {}, 'Not covered by the retrieved guidance'), h('ul', {}, res.gaps.map(q => h('li', {}, q))));
+  card.append(h('details', {}, h('summary', {}, `Retrieved guidance (${res.sources.length})`),
+    ...res.sources.map(s => h('div', {class: 'src' + (s.cited ? ' cited' : '')}, h('strong', {}, `[${s.label}] ${s.citation}${s.cited ? ' · cited' : ''}`), '\n', s.text))));
+  if (res.run_summary) card.append(h('div', {class: 'cite', style: 'margin-top:8px'}, `${res.run_summary.total_tokens} tokens · ${res.run_summary.total_latency_ms} ms · est. $${res.run_summary.cost_usd}`));
+  out.append(card);
+}
+
+function renderConfirm(res) {
+  const box = $('#confirm'); box.classList.remove('hide'); box.replaceChildren(h('strong', {}, 'Please confirm which employee you mean'));
+  const groups = res.request.ambiguous.map((a, i) => {
+    const name = 'm' + i;
+    return {mention: a.mention, name, node: h('div', {class: 'act'}, h('div', {}, `"${a.mention}"`),
+      ...a.candidates.map((c, j) => h('label', {style: 'display:flex;gap:8px;align-items:center;margin:4px 0;color:inherit;font-size:14px'}, h('input', {type: 'radio', name, value: c.employee_id, style: 'width:auto', ...(j === 0 ? {checked: 'checked'} : {})}), `${c.name} (match ${c.score})`)),
+      h('label', {style: 'display:flex;gap:8px;align-items:center;color:inherit;font-size:14px'}, h('input', {type: 'radio', name, value: '', style: 'width:auto'}), 'None of these / skip'))};
+  });
+  box.append(...groups.map(g => g.node));
+  const ok = h('button', {}, 'Confirm'), no = h('button', {class: 'ghost'}, 'Cancel');
+  ok.onclick = () => resume(res.thread_id, Object.fromEntries(groups.map(g => { const v = document.querySelector(`input[name="${g.name}"]:checked`)?.value; return [g.mention, v ? Number(v) : null]; })), false);
+  no.onclick = () => resume(res.thread_id, {}, true);
+  box.append(h('div', {class: 'row', style: 'margin-top:8px'}, ok, no));
+}
+
+async function resume(thread_id, selections, cancel) {
+  $('#status').textContent = 'Resuming…';
+  try { render(await post('/confirm', {thread_id, selections, cancel})); } catch (e) { $('#out').replaceChildren(h('div', {class: 'esc'}, e.message)); }
+  $('#status').textContent = '';
+}
+
+$('#go').onclick = async () => {
+  const question = $('#q').value.trim(); if (question.length < 3) return;
+  $('#go').disabled = true; $('#status').textContent = 'Thinking…'; $('#out').replaceChildren(); $('#confirm').classList.add('hide');
+  try { render(await post('/query', {question, employer_id: Number($('#employer').value), query_date: $('#asof').value || null})); }
+  catch (e) { $('#out').replaceChildren(h('div', {class: 'esc'}, e.message)); }
+  $('#go').disabled = false; $('#status').textContent = '';
+};
+
+async function loadDocs() {
+  const docs = await api('/documents');
+  $('#doctable').replaceChildren(h('tr', {}, ...['Document', 'Version', 'Valid from', 'Valid to', 'Chunks'].map(t => h('th', {}, t))),
+    ...docs.map(d => h('tr', {}, h('td', {}, d.source_doc), h('td', {}, d.guidance_version), h('td', {}, (d.valid_from || '').slice(0, 10)), h('td', {}, d.is_current ? 'current' : (d.valid_to || '').slice(0, 10)), h('td', {}, d.chunks))));
+  if (!docs.length) $('#doctable').replaceChildren(h('tr', {}, h('td', {class: 'mute'}, 'No documents indexed yet. Run: python -m app.ingestion.ingest')));
+}
+let pending = [];   // [{file, tr, inputs}]
+const prettyName = n => n.replace(/\.[^.]+$/, '').replace(/[_\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+$('#files').onchange = () => {
+  pending = [...$('#files').files].map(file => {
+    const doc = h('input', {value: prettyName(file.name)}), ver = h('input', {value: 'v1', style: 'width:90px'}), date = h('input', {type: 'date', value: $('#defdate').value});
+    const st = h('td', {class: 'mute'}, 'ready');
+    return {file, doc, ver, date, st, tr: h('tr', {}, h('td', {}, file.name), h('td', {}, doc), h('td', {}, ver), h('td', {}, date), st)};
+  });
+  $('#ingestrows').replaceChildren(h('tr', {}, ...['File', 'Document name', 'Version', 'Valid from', 'Status'].map(t => h('th', {}, t))), ...pending.map(p => p.tr));
+  $('#ingestbtn').disabled = !pending.length;
+};
+$('#defdate').onchange = () => pending.forEach(p => { p.date.value = $('#defdate').value; });
+$('#ingestform').onsubmit = async e => {
+  e.preventDefault(); $('#ingestbtn').disabled = true; let ok = 0, failed = 0;
+  for (const [i, p] of pending.entries()) {       // one request per file: progress + one bad file never blocks the rest
+    $('#ingeststatus').textContent = `Ingesting ${i + 1} of ${pending.length}…`; p.st.textContent = 'working…';
+    const fd = new FormData(); fd.append('file', p.file); fd.append('source_doc', p.doc.value); fd.append('guidance_version', p.ver.value); fd.append('valid_from', p.date.value || '2000-01-01');
+    try { const r = await api('/ingest', {method: 'POST', body: fd}); p.st.textContent = `✓ ${r.chunks} chunks`; ok++; }
+    catch (err) { p.st.textContent = '✗ ' + err.message.slice(0, 160); failed++; }
+  }
+  $('#ingeststatus').textContent = `Done: ${ok} indexed, ${failed} failed`; $('#ingestbtn').disabled = false; loadDocs();
+};
+async function runEval(ragas) {
+  $('#evalstatus').textContent = 'Running…'; $('#evalout').classList.remove('hide');
+  try { $('#evalout').textContent = JSON.stringify(await api('/eval?ragas=' + ragas, {method: 'POST'}), null, 2); } catch (e) { $('#evalout').textContent = e.message; }
+  $('#evalstatus').textContent = '';
+}
+$('#runeval').onclick = () => runEval(false); $('#runragas').onclick = () => runEval(true);
+init();
+</script>
+</body>
+</html>
